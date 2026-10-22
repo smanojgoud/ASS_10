@@ -1,1 +1,130 @@
 
+
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(
+            name: 'DEPLOY_TO_KUBERNETES',
+            defaultValue: true,
+            description: 'Deploy the application to Kubernetes'
+        )
+    }
+
+    environment {
+        IMAGE_NAME = 'jaivea/smart-water-monitoring'
+        DEPLOYMENT_NAME = 'smart-water-monitoring'
+        CONTAINER_NAME = 'water-dashboard'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo 'Source code checkout completed.'
+            }
+        }
+
+        stage('Parallel Validation') {
+            parallel {
+                stage('Check Project Files') {
+                    steps {
+                        bat '''
+                            if not exist index.html exit /b 1
+                            if not exist Dockerfile exit /b 1
+                            if not exist deployment.yaml exit /b 1
+                        '''
+                        echo 'Required project files found.'
+                    }
+                }
+
+                stage('Validate HTML') {
+                    steps {
+                        bat '''
+                            powershell -NoProfile -Command "if ((Get-Content index.html -Raw).Length -eq 0) { exit 1 }"
+                        '''
+                        echo 'HTML file validation passed.'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                bat 'docker build -t %IMAGE_NAME%:%BUILD_NUMBER% .'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    bat '''
+                        echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin
+                        if errorlevel 1 exit /b 1
+                        docker push %IMAGE_NAME%:%BUILD_NUMBER%
+                        if errorlevel 1 exit /b 1
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            when {
+                expression {
+                    return params.DEPLOY_TO_KUBERNETES
+                }
+            }
+            steps {
+                script {
+                    bat '''
+                        kubectl apply -f deployment.yaml
+                        if errorlevel 1 exit /b 1
+                    '''
+
+                    bat """
+                        kubectl set image deployment/%DEPLOYMENT_NAME% %CONTAINER_NAME%=%IMAGE_NAME%:%BUILD_NUMBER%
+                        if errorlevel 1 exit /b 1
+                    """
+
+                    int result = bat(
+                        script: 'kubectl rollout status deployment/smart-water-monitoring --timeout=120s',
+                        returnStatus: true
+                    )
+
+                    if (result != 0) {
+                        echo 'Deployment failed. Rolling back to the previous revision.'
+
+                        bat '''
+                            kubectl rollout undo deployment/smart-water-monitoring
+                            if errorlevel 1 exit /b 1
+                            kubectl rollout status deployment/smart-water-monitoring --timeout=120s
+                        '''
+
+                        error('Deployment failed. Rollback attempted.')
+                    }
+
+                    echo 'Kubernetes deployment completed successfully.'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the Console Output.'
+        }
+        always {
+            echo 'Pipeline execution finished.'
+        }
+    }
+}
