@@ -1,1 +1,85 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Water Distribution Dashboard</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #eef6fb;
+  color: #123;
+  margin: 0;
+}
+header {
+  background: #075985;
+  color: white;
+  padding: 20px;
+}
+main { padding: 20px; }
+.zones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+}
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 2px 8px #0001;
+}
+.alert { color: #c62828; font-weight: bold; }
+.normal { color: #16803d; font-weight: bold; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart Water Distribution System</h1>
+  <p>Reservoir, supply, pressure and leakage monitoring</p>
+</header>
+<main>
+  <h2>Distribution Zones</h2>
+  <div class="zones" id="zones"></div>
+  <h2>Alerts</h2>
+  <div id="alerts"></div>
+</main>
+<script>
+const zones = [
+  {name:"North", level:78, supply:420, pressure:3.2, time:"06:00–09:00"},
+  {name:"South", level:21, supply:360, pressure:1.1, time:"09:00–12:00"},
+  {name:"East", level:65, supply:510, pressure:2.8, time:"12:00–15:00"},
+  {name:"West", level:44, supply:290, pressure:4.8, time:"15:00–18:00"},
+  {name:"Central", level:88, supply:610, pressure:3.0, time:"18:00–21:00"}
+];
+
+const zonesDiv = document.getElementById("zones");
+const alertsDiv = document.getElementById("alerts");
+
+zones.forEach(z => {
+  const problems = [];
+  if (z.level < 25) problems.push("Low reservoir level");
+  if (z.pressure < 1.5 || z.pressure > 4.5)
+    problems.push("Abnormal pipeline pressure");
+
+  zonesDiv.innerHTML += `
+    <div class="card">
+      <h3>${z.name} Zone</h3>
+      <p>Reservoir: ${z.level}%</p>
+      <p>Daily supply: ${z.supply} kL</p>
+      <p>Pipeline pressure: ${z.pressure} bar</p>
+      <p>Supply timing: ${z.time}</p>
+      <p class="${problems.length ? "alert" : "normal"}">
+        ${problems.length ? problems.join(", ") : "Normal"}
+      </p>
+    </div>`;
+
+  if (problems.length) {
+    alertsDiv.innerHTML += `
+      <p class="alert">${z.name} Zone: ${problems.join(", ")}</p>`;
+  }
+});
+</script>
+</body>
+</html>
+
